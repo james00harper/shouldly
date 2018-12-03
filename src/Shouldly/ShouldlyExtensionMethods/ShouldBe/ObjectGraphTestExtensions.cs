@@ -57,11 +57,11 @@ namespace Shouldly
                 if (actual == null)
                     return true;
 
-                ThrowException(actual, expected, path, customMessage, shouldlyMethod);
+                ThrowException(actual, null, path, customMessage, shouldlyMethod);
             }
             else if (actual == null)
             {
-                ThrowException(actual, expected, path, customMessage, shouldlyMethod);
+                ThrowException(null, expected, path, customMessage, shouldlyMethod);
             }
 
             return false;
@@ -73,16 +73,20 @@ namespace Shouldly
             var expectedType = expected.GetType();
             var actualType = actual.GetType();
 
-            if (actualType != expectedType)
+            if (actualType != expectedType && !expectedType.IsAssignableFrom(actualType) &&
+                !(typeof(IEnumerable).IsAssignableFrom(expectedType) &&
+                  typeof(IEnumerable).IsAssignableFrom(actualType)))
+            {
                 ThrowException(actualType, expectedType, path, customMessage, shouldlyMethod);
+            }
 
-            var typeName = $" [{actualType.FullName}]";
+            var typeName = $" [{expectedType.FullName}]";
             if (path.Count == 0)
                 path.Add(typeName);
             else
                 path[path.Count - 1] += typeName;
 
-            return actualType;
+            return expectedType;
         }
 
         private static void CompareValueTypes(ValueType actual, ValueType expected, IEnumerable<string> path,
@@ -93,7 +97,7 @@ namespace Shouldly
         }
 
         private static void CompareReferenceTypes(object actual, object expected, Type type,
-            IEnumerable<string> path, IDictionary<object, IList<object>> previousComparisons,
+            IList<string> path, IDictionary<object, IList<object>> previousComparisons,
             [InstantHandle] Func<string> customMessage, [CallerMemberName] string shouldlyMethod = null)
         {
             if (ReferenceEquals(actual, expected) ||
@@ -125,7 +129,7 @@ namespace Shouldly
         }
 
         private static void CompareEnumerables(IEnumerable actual, IEnumerable expected,
-            IEnumerable<string> path, IDictionary<object, IList<object>> previousComparisons,
+            IList<string> path, IDictionary<object, IList<object>> previousComparisons,
             [InstantHandle] Func<string> customMessage, [CallerMemberName] string shouldlyMethod = null)
         {
             var expectedList = expected.Cast<object>().ToList();
@@ -137,15 +141,53 @@ namespace Shouldly
                 ThrowException(actualList.Count, expectedList.Count, newPath, customMessage, shouldlyMethod);
             }
 
-            for (var i = 0; i < actualList.Count; i++)
+            var unmatchedIndexes = Enumerable.Range(0, actualList.Count).ToList();
+            
+            for (var i = 0; i < expectedList.Count; i++)
             {
-                var newPath = path.Concat(new[] { $"Element [{i}]" });
-                CompareObjects(actualList[i], expectedList[i], newPath.ToList(), previousComparisons, customMessage, shouldlyMethod);
+                var newPath = path.Concat(new[] { $"Element [{i}]" }).ToList();
+
+                var expectedItem = expectedList[i];
+
+                PerformLooseMatch(unmatchedIndexes, actualList, expectedItem, newPath, previousComparisons, customMessage, shouldlyMethod);
+            }
+        }
+
+        private static void PerformLooseMatch(IList<int> unmatchedIndexes, IList<object> actual, object expectedItem,
+            IList<string> path, IDictionary<object, IList<object>> previousComparisons,
+            [InstantHandle] Func<string> customMessage, [CallerMemberName] string shouldlyMethod = null)
+        {
+            var indexToBeRemoved = -1;
+
+            for (var i = 0; i < unmatchedIndexes.Count; i++)
+            {
+                try
+                {
+                    var index = unmatchedIndexes[i];
+                    var subject = actual[index];
+
+                    CompareObjects(subject, expectedItem, path, previousComparisons, customMessage, shouldlyMethod);
+                    indexToBeRemoved = i;
+                    break;
+                }
+                catch (ShouldAssertException)
+                {
+                    if (i == unmatchedIndexes.Count - 1)
+                    {
+                        throw;
+                    }
+                }
+
+            }
+
+            if (indexToBeRemoved != -1)
+            {
+                unmatchedIndexes.RemoveAt(indexToBeRemoved);
             }
         }
 
         private static void CompareProperties(object actual, object expected, IEnumerable<PropertyInfo> properties,
-            IEnumerable<string> path, IDictionary<object, IList<object>> previousComparisons,
+            IList<string> path, IDictionary<object, IList<object>> previousComparisons,
             [InstantHandle] Func<string> customMessage, [CallerMemberName] string shouldlyMethod = null)
         {
             foreach (var property in properties)
@@ -167,14 +209,14 @@ namespace Shouldly
 
         private static bool Contains(this IDictionary<object, IList<object>> comparisons, object actual, object expected)
         {
-            return comparisons.TryGetValue(actual, out IList<object> list)
+            return comparisons.TryGetValue(actual, out var list)
                    && list.Contains(expected);
         }
 
         private static void Record(this IDictionary<object, IList<object>> comparisons, object actual,
             object expected)
         {
-            if (comparisons.TryGetValue(actual, out IList<object> list))
+            if (comparisons.TryGetValue(actual, out var list))
                 list.Add(expected);
             else
                 comparisons.Add(actual, new List<object>(new[] { expected }));
