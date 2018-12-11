@@ -23,11 +23,11 @@ namespace Shouldly
 
         public static void ShouldBeEquivalentTo(this object actual, object expected, [InstantHandle] Func<string> customMessage)
         {
-            CompareObjects(actual, expected, new List<string>(), new Dictionary<object, IList<object>>(), customMessage);
+            CompareObjects(actual, expected, new List<string>(), customMessage);
         }
 
         private static void CompareObjects(object actual, object expected,
-            IList<string> path, IDictionary<object, IList<object>> previousComparisons,
+            IList<string> path,
             [InstantHandle] Func<string> customMessage, [CallerMemberName] string shouldlyMethod = null)
         {
             if (BothValuesAreNull(actual, expected, path, customMessage, shouldlyMethod))
@@ -45,7 +45,7 @@ namespace Shouldly
             }
             else
             {
-                CompareReferenceTypes(actual, expected, type, path, previousComparisons, customMessage, shouldlyMethod);
+                CompareReferenceTypes(actual, expected, type, path, customMessage, shouldlyMethod);
             }
         }
 
@@ -97,27 +97,24 @@ namespace Shouldly
         }
 
         private static void CompareReferenceTypes(object actual, object expected, Type type,
-            IList<string> path, IDictionary<object, IList<object>> previousComparisons,
-            [InstantHandle] Func<string> customMessage, [CallerMemberName] string shouldlyMethod = null)
+            IList<string> path, [InstantHandle] Func<string> customMessage,
+            [CallerMemberName] string shouldlyMethod = null)
         {
-            if (ReferenceEquals(actual, expected) ||
-                previousComparisons.Contains(actual, expected))
+            if (ReferenceEquals(actual, expected))
                 return;
-
-            previousComparisons.Record(actual, expected);
 
             if (type == typeof(string))
             {
-                CompareStrings((string)actual, (string)expected, path, customMessage, shouldlyMethod);
+                CompareStrings((string) actual, (string) expected, path, customMessage, shouldlyMethod);
             }
             else if (typeof(IEnumerable).IsAssignableFrom(type))
             {
-                CompareEnumerables((IEnumerable)actual, (IEnumerable)expected, path, previousComparisons, customMessage, shouldlyMethod);
+                CompareEnumerables((IEnumerable) actual, (IEnumerable) expected, path, customMessage, shouldlyMethod);
             }
             else
             {
                 var properties = type.GetProperties(BindingFlags.Public | BindingFlags.Instance);
-                CompareProperties(actual, expected, properties, path, previousComparisons, customMessage, shouldlyMethod);
+                CompareProperties(actual, expected, properties, path, customMessage, shouldlyMethod);
             }
         }
 
@@ -129,32 +126,32 @@ namespace Shouldly
         }
 
         private static void CompareEnumerables(IEnumerable actual, IEnumerable expected,
-            IList<string> path, IDictionary<object, IList<object>> previousComparisons,
-            [InstantHandle] Func<string> customMessage, [CallerMemberName] string shouldlyMethod = null)
+            IList<string> path, [InstantHandle] Func<string> customMessage,
+            [CallerMemberName] string shouldlyMethod = null)
         {
             var expectedList = expected.Cast<object>().ToList();
             var actualList = actual.Cast<object>().ToList();
 
             if (actualList.Count != expectedList.Count)
             {
-                var newPath = path.Concat(new[] { "Count" });
+                var newPath = path.Concat(new[] {"Count"});
                 ThrowException(actualList.Count, expectedList.Count, newPath, customMessage, shouldlyMethod);
             }
 
             var unmatchedIndexes = Enumerable.Range(0, actualList.Count).ToList();
-            
+
             for (var i = 0; i < expectedList.Count; i++)
             {
-                var newPath = path.Concat(new[] { $"Element [{i}]" }).ToList();
+                var newPath = path.Concat(new[] {$"Element [{i}]"}).ToList();
 
                 var expectedItem = expectedList[i];
 
-                PerformLooseMatch(unmatchedIndexes, actualList, expectedItem, newPath, previousComparisons, customMessage, shouldlyMethod);
+                PerformLooseMatch(unmatchedIndexes, actualList, expectedItem, newPath, customMessage, shouldlyMethod);
             }
         }
 
         private static void PerformLooseMatch(IList<int> unmatchedIndexes, IList<object> actual, object expectedItem,
-            IList<string> path, IDictionary<object, IList<object>> previousComparisons,
+            IList<string> path, 
             [InstantHandle] Func<string> customMessage, [CallerMemberName] string shouldlyMethod = null)
         {
             var indexToBeRemoved = -1;
@@ -166,7 +163,7 @@ namespace Shouldly
                     var index = unmatchedIndexes[i];
                     var subject = actual[index];
 
-                    CompareObjects(subject, expectedItem, path, previousComparisons, customMessage, shouldlyMethod);
+                    CompareObjects(subject, expectedItem, path, customMessage, shouldlyMethod);
                     indexToBeRemoved = i;
                     break;
                 }
@@ -187,7 +184,7 @@ namespace Shouldly
         }
 
         private static void CompareProperties(object actual, object expected, IEnumerable<PropertyInfo> properties,
-            IList<string> path, IDictionary<object, IList<object>> previousComparisons,
+            IList<string> path, 
             [InstantHandle] Func<string> customMessage, [CallerMemberName] string shouldlyMethod = null)
         {
             foreach (var property in properties)
@@ -196,7 +193,7 @@ namespace Shouldly
                 var expectedValue = property.GetValue(expected, new object[0]);
 
                 var newPath = path.Concat(new[] { property.Name });
-                CompareObjects(actualValue, expectedValue, newPath.ToList(), previousComparisons, customMessage, shouldlyMethod);
+                CompareObjects(actualValue, expectedValue, newPath.ToList(), customMessage, shouldlyMethod);
             }
         }
 
